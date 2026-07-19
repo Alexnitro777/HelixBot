@@ -1,10 +1,58 @@
 import {
+  ActionRowBuilder,
+  EmbedBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  MessageFlags,
-  EmbedBuilder,
+  StringSelectMenuBuilder,
 } from "discord.js";
+import type { HelixClient } from "../../core/client.js";
 import type { HelixModule } from "../../core/types.js";
+
+async function buildModulesPanel(client: HelixClient, guildId: string) {
+  const embed = new EmbedBuilder()
+    .setTitle("⚙️ Управление модулями сервера")
+    .setColor(0x5865f2)
+    .setTimestamp();
+
+  const lines: string[] = [
+    "> Выберите модуль в выпадающем меню ниже, чтобы включить или выключить его.\n",
+  ];
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId("system_toggle_module")
+    .setPlaceholder("Выберите модуль для переключения...");
+
+  let hasManageableModules = false;
+
+  for (const [id, mod] of client.modules.entries()) {
+    if (id === "system") continue;
+    hasManageableModules = true;
+
+    const enabled = await client.isModuleEnabled(guildId, id);
+    const statusIcon = enabled ? "🟢" : "🔴";
+    const statusText = enabled ? "Включён" : "Отключён";
+
+    lines.push(`${statusIcon} **${mod.name}** (\`${id}\`) — *${statusText}*`);
+
+    selectMenu.addOptions({
+      label: mod.name,
+      description: `Текущий статус: ${statusText}`,
+      value: id,
+      emoji: statusIcon,
+    });
+  }
+
+  if (!hasManageableModules) {
+    embed.setDescription("На сервере нет управляемых модулей.");
+    return { embeds: [embed], components: [] };
+  }
+
+  embed.setDescription(lines.join("\n"));
+
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+  return { embeds: [embed], components: [row] };
+}
 
 const systemModule: HelixModule = {
   id: "system",
@@ -13,37 +61,8 @@ const systemModule: HelixModule = {
     {
       data: new SlashCommandBuilder()
         .setName("модули")
-        .setDescription("Управление модулями бота на сервере")
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addSubcommand((sub) =>
-          sub
-            .setName("список")
-            .setDescription("Показать список всех модулей и их статус")
-        )
-        .addSubcommand((sub) =>
-          sub
-            .setName("включить")
-            .setDescription("Включить модуль на сервере")
-            .addStringOption((opt) =>
-              opt
-                .setName("название")
-                .setDescription("Идентификатор модуля")
-                .setRequired(true)
-                .setAutocomplete(true)
-            )
-        )
-        .addSubcommand((sub) =>
-          sub
-            .setName("выключить")
-            .setDescription("Выключить модуль на сервере")
-            .addStringOption((opt) =>
-              opt
-                .setName("название")
-                .setDescription("Идентификатор модуля")
-                .setRequired(true)
-                .setAutocomplete(true)
-            )
-        ),
+        .setDescription("Панель управления модулями бота на сервере")
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       async execute(interaction, client) {
         if (!interaction.guildId) {
           await interaction.reply({
@@ -53,57 +72,10 @@ const systemModule: HelixModule = {
           return;
         }
 
-        const subcommand = interaction.options.getSubcommand();
-        const guildId = interaction.guildId;
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (subcommand === "список") {
-          const embed = new EmbedBuilder()
-            .setTitle("⚙️ Модули бота")
-            .setColor(0x5865f2);
-
-          const lines: string[] = [];
-          for (const [id, mod] of client.modules.entries()) {
-            const enabled = await client.isModuleEnabled(guildId, id);
-            const status = enabled ? "✅ Включён" : "❌ Выключен";
-            lines.push(`• **${mod.name}** (\`${id}\`): ${status}`);
-          }
-
-          embed.setDescription(lines.join("\n") || "Нет загруженных модулей.");
-          await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
-          return;
-        }
-
-        const moduleId = interaction.options.getString("название", true);
-        const mod = client.modules.get(moduleId);
-
-        if (!mod) {
-          await interaction.reply({
-            content: `❌ Модуль «${moduleId}» не найден.`,
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
-        }
-
-        if (subcommand === "включить") {
-          await client.setModuleEnabled(guildId, moduleId, true);
-          await interaction.reply({
-            content: `✅ Модуль **${mod.name}** (\`${moduleId}\`) успешно **включён** на этом сервере.`,
-            flags: MessageFlags.Ephemeral,
-          });
-        } else if (subcommand === "выключить") {
-          if (moduleId === "system") {
-            await interaction.reply({
-              content: `⚠️ Системный модуль нельзя выключить.`,
-              flags: MessageFlags.Ephemeral,
-            });
-            return;
-          }
-          await client.setModuleEnabled(guildId, moduleId, false);
-          await interaction.reply({
-            content: `❌ Модуль **${mod.name}** (\`${moduleId}\`) **выключён** на этом сервере.`,
-            flags: MessageFlags.Ephemeral,
-          });
-        }
+        const panelData = await buildModulesPanel(client, interaction.guildId);
+        await interaction.editReply(panelData);
       },
     },
   ],
@@ -111,13 +83,29 @@ const systemModule: HelixModule = {
     {
       event: "interactionCreate",
       async execute(client, interaction) {
-        if (interaction.isAutocomplete() && interaction.commandName === "модули") {
-          const focused = interaction.options.getFocused().toLowerCase();
-          const choices = [...client.modules.values()]
-            .filter((m) => m.id.toLowerCase().includes(focused) || m.name.toLowerCase().includes(focused))
-            .map((m) => ({ name: `${m.name} (${m.id})`, value: m.id }))
-            .slice(0, 25);
-          await interaction.respond(choices).catch(() => {});
+        if (
+          interaction.isStringSelectMenu() &&
+          interaction.customId === "system_toggle_module"
+        ) {
+          if (!interaction.guildId) return;
+
+          const moduleId = interaction.values[0];
+          if (!moduleId || moduleId === "system") return;
+
+          await interaction.deferUpdate();
+
+          const currentStatus = await client.isModuleEnabled(
+            interaction.guildId,
+            moduleId,
+          );
+          await client.setModuleEnabled(
+            interaction.guildId,
+            moduleId,
+            !currentStatus,
+          );
+
+          const panelData = await buildModulesPanel(client, interaction.guildId);
+          await interaction.editReply(panelData);
         }
       },
     },

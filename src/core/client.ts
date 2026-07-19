@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Client, ClientOptions } from "discord.js";
+import { Client, ClientOptions, MessageFlags } from "discord.js";
 import { config } from "../config/config.js";
 import { logger } from "../logger/index.js";
 import { db, guilds, guildModules } from "../db/index.js";
@@ -70,7 +70,9 @@ export class HelixClient extends Client {
       } catch (error) {
         this.logger.error(error, `Ошибка при выполнении команды ${interaction.commandName}`);
         if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: "Произошла ошибка при выполнении этой команды.", ephemeral: true }).catch(() => {});
+          await interaction.reply({ content: "Произошла ошибка при выполнении этой команды.", flags: MessageFlags.Ephemeral }).catch(() => {});
+        } else {
+          await interaction.followUp({ content: "Произошла ошибка при выполнении этой команды.", flags: MessageFlags.Ephemeral }).catch(() => {});
         }
       }
     });
@@ -229,6 +231,7 @@ export class HelixClient extends Client {
         .onDuplicateKeyUpdate({ set: { id: guildId } });
 
       for (const [moduleId] of this.modules) {
+        if (moduleId === "system") continue;
         await db
           .insert(guildModules)
           .values({ guildId, moduleId, enabled: true })
@@ -240,6 +243,8 @@ export class HelixClient extends Client {
   }
 
   public async isModuleEnabled(guildId: string, moduleId: string): Promise<boolean> {
+    if (moduleId === "system") return true;
+
     let guildCache = this.moduleStatusCache.get(guildId);
     if (!guildCache) {
       guildCache = new Map<string, boolean>();
@@ -284,6 +289,8 @@ export class HelixClient extends Client {
   }
 
   public async setModuleEnabled(guildId: string, moduleId: string, enabled: boolean): Promise<void> {
+    if (moduleId === "system") return;
+
     await this.ensureGuildExists(guildId);
 
     await db
