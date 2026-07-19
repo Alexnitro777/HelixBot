@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"if (fs.existsSync('src/db/migrations')) { fs.mkdirSync('dist/db', { recursive: true }); fs.cpSync('src/db/migrations', 'dist/db/migrations', { recursive: true }); }\"",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "db:generate": "drizzle-kit generate",
