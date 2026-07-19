@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Client, ClientOptions, MessageFlags } from "discord.js";
+import { Client, ClientOptions, Events, MessageFlags } from "discord.js";
 import { config } from "../config/config.js";
 import { logger } from "../logger/index.js";
 import { db, guilds, guildModules } from "../db/index.js";
@@ -31,7 +31,7 @@ export class HelixClient extends Client {
   }
 
   private setupCoreEvents(): void {
-    this.once("ready", async () => {
+    this.once(Events.ClientReady, async () => {
       this.logger.info(`Авторизован как ${this.user?.tag}`);
       const guildsList = await this.guilds.fetch();
       for (const [guildId] of guildsList) {
