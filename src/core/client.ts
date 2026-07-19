@@ -35,6 +35,7 @@ export class HelixClient extends Client {
       this.logger.info(`Авторизован как ${this.user?.tag}`);
       const guildsList = await this.guilds.fetch();
       for (const [guildId] of guildsList) {
+        await this.ensureGuildExists(guildId);
         await this.deployCommandsForGuild(guildId);
       }
       this.logger.info("Бот готов к работе");
@@ -222,11 +223,19 @@ export class HelixClient extends Client {
 
   public async ensureGuildExists(guildId: string): Promise<void> {
     try {
-      await db.insert(guilds).values({ id: guildId });
-    } catch (error: any) {
-      if (error.code !== "ER_DUP_ENTRY") {
-        throw error;
+      await db
+        .insert(guilds)
+        .values({ id: guildId })
+        .onDuplicateKeyUpdate({ set: { id: guildId } });
+
+      for (const [moduleId] of this.modules) {
+        await db
+          .insert(guildModules)
+          .values({ guildId, moduleId, enabled: true })
+          .onDuplicateKeyUpdate({ set: { guildId } });
       }
+    } catch (error: any) {
+      this.logger.error(error, `Ошибка при гарантировании записи сервера ${guildId} в БД`);
     }
   }
 
@@ -247,7 +256,7 @@ export class HelixClient extends Client {
       .where(and(eq(guildModules.guildId, guildId), eq(guildModules.moduleId, moduleId)))
       .limit(1);
 
-    const enabled = row?.enabled ?? false;
+    const enabled = row?.enabled ?? true;
     guildCache.set(moduleId, enabled);
     return enabled;
   }
