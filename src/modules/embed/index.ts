@@ -23,7 +23,7 @@ for (const def of embeds.values()) {
 
 const embedModule: HelixModule = {
   id: "embed",
-  name: "Embed",
+  name: "Вебхук",
   commands: [
     {
       data: new SlashCommandBuilder()

@@ -33,7 +33,7 @@ async function buildModulesPanel(client: HelixClient, guildId: string) {
     const statusIcon = enabled ? "🟢" : "🔴";
     const statusText = enabled ? "Включён" : "Отключён";
 
-    lines.push(`${statusIcon} **${mod.name}** (\`${id}\`) — *${statusText}*`);
+    lines.push(`${statusIcon} **${mod.name}** — ${statusText}`);
 
     selectMenu.addOptions({
       label: mod.name,
